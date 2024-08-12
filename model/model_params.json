@@ -1,0 +1,1 @@
+{"vocab_size": 65, "block_size": 128, "n_embd": 128, "n_head": 4, "n_blocks": 4, "dropout": 0.2, "device": "mps"}
