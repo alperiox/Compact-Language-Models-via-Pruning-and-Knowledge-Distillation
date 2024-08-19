@@ -80,8 +80,12 @@ def train_loop(model, optimizer, vocab_size, train_loader, batch_loaders: list[B
 
         if iter % eval_interval == 0:
             losses = estimate_loss(model, batch_loaders, eval_iters)
+            names = [loader.name for loader in batch_loaders]
+            desc = ""
+            for name in names:
+                desc += f"{name} loss {losses[name]:.4f}, "
             bar.set_description(
-                f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+                f"step {iter}: {desc} \t | baseline (uniform random): {baseline_score:.4f}"
             )
 
         # evaluate the loss
