@@ -36,6 +36,9 @@ class MultiHeadAttentionConcat(nn.Module):
     """ Implements multi-head self-attention using individual heads and concatenating their results at the end """
     def __init__(self, num_heads, head_size, n_embd, device, block_size, dropout=0.2):
         super().__init__()
+        self.num_heads = num_heads
+        
+
         self.heads = nn.ModuleList([Head(head_size, n_embd, block_size, dropout) for _ in range(num_heads)])
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
