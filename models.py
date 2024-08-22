@@ -4,49 +4,52 @@ import torch.nn.functional as F
 
 
 class Head(nn.Module):
-    """ one head of self-attention """
+    """one head of self-attention"""
 
     def __init__(self, head_size, n_embd, block_size, dropout=0.2):
         super().__init__()
         self.head_size = head_size
-        self.key = nn.Linear(n_embd, head_size, bias=False) # (head_size, n_embd)
-        self.query = nn.Linear(n_embd, head_size, bias=False) # (head_size, n_embd)
-        self.value = nn.Linear(n_embd, head_size, bias=False) # (head_size, n_embd)
+        self.key = nn.Linear(n_embd, head_size, bias=False)  # (head_size, n_embd)
+        self.query = nn.Linear(n_embd, head_size, bias=False)  # (head_size, n_embd)
+        self.value = nn.Linear(n_embd, head_size, bias=False)  # (head_size, n_embd)
         self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
-    
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        B,T,C = x.shape
+        B, T, C = x.shape
 
-        k = self.key(x) # (B, T, head_size)
-        q = self.query(x) # (B, T, head_size)
+        k = self.key(x)  # (B, T, head_size)
+        q = self.query(x)  # (B, T, head_size)
 
-        wei = q @ k.transpose(-2, -1) * (self.head_size**-.5)# (B, T, T)
+        wei = q @ k.transpose(-2, -1) * (self.head_size**-0.5)  # (B, T, T)
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
-        wei = F.softmax(wei, dim=-1) # (B,T,T)
+        wei = F.softmax(wei, dim=-1)  # (B,T,T)
         wei = self.dropout(wei)
         # now we can perform the weighter aggregation
         v = self.value(x)
-        out = wei @ v # (B, T, T) @ (B, T, C) -> (B, T, C)
+        out = wei @ v  # (B, T, T) @ (B, T, C) -> (B, T, C)
         return out
 
 
 class MultiHeadAttentionConcat(nn.Module):
-    """ Implements multi-head self-attention using individual heads and concatenating their results at the end """
+    """Implements multi-head self-attention using individual heads and concatenating their results at the end"""
+
     def __init__(self, num_heads, head_size, n_embd, device, block_size, dropout=0.2):
         super().__init__()
         self.num_heads = num_heads
-        
 
-        self.heads = nn.ModuleList([Head(head_size, n_embd, block_size, dropout) for _ in range(num_heads)])
+        self.heads = nn.ModuleList(
+            [Head(head_size, n_embd, block_size, dropout) for _ in range(num_heads)]
+        )
         self.proj = nn.Linear(n_embd, n_embd)
         self.dropout = nn.Dropout(dropout)
-    
+
     def forward(self, x):
         out = torch.cat([h(x) for h in self.heads], -1)
         out = self.dropout(self.proj(out))
         return out
+
 
 class MultiHeadAttention(nn.Module):
     """implements multi-headed masked self-attention using tensor operations"""
@@ -135,7 +138,9 @@ class Block(nn.Module):
     def __init__(self, n_head, n_embd, device, block_size, dropout=0.2):
         super().__init__()
         self.head_size = n_embd // n_head
-        self.sa = MultiHeadAttentionConcat(n_head, self.head_size, n_embd, device, block_size, dropout=0.2)
+        self.sa = MultiHeadAttentionConcat(
+            n_head, self.head_size, n_embd, device, block_size, dropout=0.2
+        )
         self.ffwd = FeedForward(n_embd, dropout)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
@@ -147,7 +152,9 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size, block_size, n_embd, n_head, n_blocks, device, dropout):
+    def __init__(
+        self, vocab_size, block_size, n_embd, n_head, n_blocks, device, dropout
+    ):
         super().__init__()
         self.vocab_size = vocab_size
         self.n_embd = n_embd
@@ -161,7 +168,16 @@ class GPT(nn.Module):
             block_size, n_embd
         )  # every token has a position embedding
         self.blocks = nn.Sequential(
-            *[Block(n_head=n_head, n_embd=n_embd, device=device, block_size=block_size, dropout=dropout) for _ in range(n_blocks)]
+            *[
+                Block(
+                    n_head=n_head,
+                    n_embd=n_embd,
+                    device=device,
+                    block_size=block_size,
+                    dropout=dropout,
+                )
+                for _ in range(n_blocks)
+            ]
         )
         self.ln_f = nn.LayerNorm(n_embd)  # the final layer norm
         self.ln_head = nn.Linear(n_embd, vocab_size)  # the language model head
@@ -192,7 +208,7 @@ class GPT(nn.Module):
     def generate(self, idx, max_new_tokens):
         # idx is a (B, T) array, where T is the context length
         for _ in range(max_new_tokens):
-            idx_cropped = idx[:, -self.block_size:]
+            idx_cropped = idx[:, -self.block_size :]
             logits, loss = self(idx_cropped)  # out: (B, T, C)
             # pick the last context window to sample the next token
             logits = logits[:, -1, :]  # (B, C)
@@ -204,4 +220,3 @@ class GPT(nn.Module):
             idx = torch.concat((idx, next_idx), dim=1)  # (B, T+1)
 
         return idx
-
