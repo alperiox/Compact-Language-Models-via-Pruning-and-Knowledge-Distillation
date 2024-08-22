@@ -1,11 +1,10 @@
 import matplotlib.pyplot as plt
 import torch
 from torch.optim.adamw import AdamW
-from torch.nn import functional as F
 
 from models import GPT
 from tokenizers import Tokenizer
-from utils import BatchLoader, experiment, save, train_loop, kd_train_loop
+from utils import BatchLoader, experiment, save, train_loop
 
 # hyperparameters
 batch_size = 16  # number of independent sequences that'll be processed in parallel
