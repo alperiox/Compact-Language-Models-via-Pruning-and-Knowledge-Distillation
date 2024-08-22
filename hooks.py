@@ -78,7 +78,6 @@ def attn_head_importance_hook(
     # print("importance:", importance)
     # print(f"{module.__class__.__name__} importance: {importance.shape}")
 
-
 def neuron_importance_hook(module, ins, outs) -> None:
     """calculates the neuron importance for the given layer"""
 

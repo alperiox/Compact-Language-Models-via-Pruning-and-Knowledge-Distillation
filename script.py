@@ -12,7 +12,11 @@ block_size = 128  # maximum context length for the preds
 max_iters = 1000
 eval_interval = 200
 learning_rate = 3e-4
-device = "mps" if torch.backends.mps.is_available() else ("cuda:0" if torch.cuda.is_available() else "cpu")
+device = (
+    "mps"
+    if torch.backends.mps.is_available()
+    else ("cuda:0" if torch.cuda.is_available() else "cpu")
+)
 eval_iters = 200
 n_embd = 256
 n_head = 4
@@ -40,7 +44,6 @@ n1 = int(
 train_data = data[:n]
 val_data = data[n:n1]
 calibrate_data = data[n1:]
-
 
 train_loader = BatchLoader(train_data, block_size, batch_size, device, name="train")
 val_loader = BatchLoader(val_data, block_size, batch_size, device, name="val")
@@ -89,11 +92,13 @@ print("-" * 50)
 print("The experiment is going to start soon!")
 
 # configurations = get_config_combinations()[:-2]
-configurations = [[
-    ("width_head", 0.2),
-    ("width_neuron", 0.2),
-    ("width_embedding", 0.2),
-]]
+configurations = [
+    [
+        ("width_head", 0.2),
+        ("width_neuron", 0.2),
+        ("width_embedding", 0.2),
+    ]
+]
 
 
 results = experiment(
