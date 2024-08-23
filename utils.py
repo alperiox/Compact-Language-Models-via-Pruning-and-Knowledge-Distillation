@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.optim.adamw import AdamW
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from hooks import register_all_forward_hooks, remove_all_forward_hooks
 from models import GPT
@@ -283,6 +283,7 @@ def kd_train_loop(
     training_losses = []
 
     loss_t = torch.tensor([0])
+    loss_s = torch.tensor([0])
     teacher_model.eval()
     bar = tqdm(range(max_iters))
     for iter in bar:
@@ -296,11 +297,11 @@ def kd_train_loop(
             for name in names:
                 desc += f"{name} loss {losses[name]:.4f}, "
             bar.set_description(
-                    f"step {iter}: {desc} \t teacher loss: {loss_t.item()} | baseline (uniform random): {baseline_score:.4f}"
+                    f"step {iter}: {desc} \t teacher loss: {loss_t.item():.4f} \t student loss: {loss_s.item():.4f} | baseline (uniform random): {baseline_score:.4f}"
             )
         # evaluate the loss
 
-        logits, loss = model(xb, yb)
+        logits, loss_s = model(xb, yb)
         teacher_logits, _ = teacher_model(xb, yb)
 
         loss_t =  torch.nn.functional.kl_div(
@@ -310,7 +311,7 @@ def kd_train_loop(
         )
 
 
-        loss = loss + loss_t
+        loss = loss_s + loss_t
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
