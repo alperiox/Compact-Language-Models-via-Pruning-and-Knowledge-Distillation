@@ -29,14 +29,14 @@ dropout = 0.2
 
 torch.manual_seed(1337)
 
-
 if not os.path.exists("tinyshakespeare.txt"):
     import requests
 
     dataset_url = "https://gist.github.com/alperiox/1b85fb55ac6d39e513b8de5617ce1898/raw/546439f414a887d31d6034e45c35ab57e724d540/tinyshakespeare.txt"
-    
+
     r = requests.get(dataset_url)
-    with open("tinyshakespeare.txt", "wb") as f: f.write(r.content)
+    with open("tinyshakespeare.txt", "wb") as f:
+        f.write(r.content)
 
 # data preparation
 text = open("tinyshakespeare.txt", "r").read()
@@ -62,7 +62,6 @@ val_loader = BatchLoader(val_data, block_size, batch_size, device, name="val")
 calibration_loader = BatchLoader(
     calibrate_data, block_size, batch_size, device, name="calibrate"
 )
-
 model = GPT(vocab_size, block_size, n_embd, n_head, n_blocks, device, dropout)
 model.to(device)
 

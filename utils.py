@@ -135,6 +135,7 @@ def experiment(
 
     base_loss = estimate_loss(base_model, val_loader)["val"].item()
 
+    print(f"Base loss after the initial training: {base_loss:.4f}")
     for run in range(len(pruning_strategies)):
         print("-" * 50)
         strategy = pruning_strategies[run]
@@ -147,6 +148,7 @@ def experiment(
         model, num_params = get_model_with_importances(
             device, model_path, calibration_loader, batch_size, block_size
         )
+
         print(f"{'Number of trainable parameters before pruning:':60}", num_params)
         # prune
         for f, r in zip(pruning_funcs, ratios):
@@ -154,9 +156,11 @@ def experiment(
         #
         pruned_num_params = get_num_params(model)
         param_diff_ratio = (num_params - pruned_num_params) / num_params
+        
         print(
             f"{'Number of training parameters after pruning:':60} {pruned_num_params}"
         )
+
         print(
             f"{'Ratio of the pruned weights to the base model:':60} {param_diff_ratio*100:.2f}%"
         )
@@ -164,6 +168,7 @@ def experiment(
         print(f"{'Pruned evaluation loss (before calibration):':60} {pruned_eval:.4f}")
         #
         print("Starting the calibration")
+
         optimizer = AdamW(model.parameters(), lr=learning_rate)
         losses = kd_train_loop(
             model=model,
