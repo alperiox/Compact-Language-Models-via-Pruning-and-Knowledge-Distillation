@@ -25,11 +25,11 @@ def prune_neurons(model, ratio=0.2) -> None:
 
             # now we need to set the weights to the new layers.
 
-            dense1.weight.data = dense1.weight.data[idx, :]
-            dense1.bias.data = dense1.bias.data[idx]
+            module.ffwd.net[0].weight.data = dense1.weight.data[idx, :]
+            module.ffwd.net[0].bias.data = dense1.bias.data[idx]
 
-            dense2.weight.data = dense2.weight.data[idx, :]
-            dense2.bias.data = dense2.bias.data[idx]
+            module.ffwd.net[2].weight.data = dense2.weight.data[idx, :]
+            module.ffwd.net[2].bias.data = dense2.bias.data[idx]
 
             module.ffwd.net[0].calculated_importance = importances[idx]
             module.ffwd.net[2].calculated_importance = importances[idx]
