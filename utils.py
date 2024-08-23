@@ -110,11 +110,11 @@ def experiment(
     vocab_size,
     calibration_loader,
     val_loader,
+    device: str,
     pruning_strategies: list[list[tuple[str, float]]] = [
         [("width_head", 0.1), ("width_neuron", 0.1), ("width_embedding", 0.1)]
     ],
     learning_rate: float = 2e-3,
-    device: str = "mps",
     model_path: str = "model",
 ):
 

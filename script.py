@@ -119,6 +119,7 @@ results = experiment(
     vocab_size,
     calibration_loader,
     val_loader,
+    device=device,
     pruning_strategies=configurations,
     learning_rate=learning_rate,
     model_path="./model",
