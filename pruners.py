@@ -22,14 +22,13 @@ def prune_neurons(model, ratio=0.2) -> None:
             module.ffwd.net[2] = nn.Linear(num_neurons, dense2.out_features).to(
                 model.device
             )  # weights.shape = (dense2.out_features = emb)
-
             # now we need to set the weights to the new layers.
 
-            dense1.weight.data = dense1.weight.data[idx, :]
-            dense1.bias.data = dense1.bias.data[idx]
+            module.ffwd.net[0].weight.data = dense1.weight.data[idx, :]
+            module.ffwd.net[0].bias.data = dense1.bias.data[idx]
 
-            dense2.weight.data = dense2.weight.data[idx, :]
-            dense2.bias.data = dense2.bias.data[idx]
+            module.ffwd.net[2].weight.data = dense2.weight.data[:, idx]
+            module.ffwd.net[2].bias.data = dense2.bias.data
 
             module.ffwd.net[0].calculated_importance = importances[idx]
             module.ffwd.net[2].calculated_importance = importances[idx]
@@ -118,6 +117,8 @@ def prune_embeddings(model, ratio=0.2) -> None:
             module.ffwd.net[2] = nn.Linear(dense2.in_features, num_dense_embd).to(
                 model.device
             )  # weights.shape = (dense2.out_features = emb)
+
+
 
             module.ffwd.net[0].weight.data = dense1.weight.data[:, idx]
             module.ffwd.net[0].bias.data = dense1.bias.data

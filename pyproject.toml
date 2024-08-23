@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "compact-language-models-240714679"
+version = "0.1.0"
+description = "Unofficial implementation of [Compact Language Models via Pruning and Knowledge Distillation](https://arxiv.org/pdf/2407.14679)"
+authors = ["Alper Balbay <itsc0508@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torch = "^2.4.0"
+numpy = "^2.0.1"
+matplotlib = "^3.9.1.post1"
+scikit-learn = "^1.5.1"
+pytest = "^8.3.2"
+pandas = "^2.2.2"
+
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.8.0"
+ruff = "^0.5.7"
+ipython = "^8.26.0"
+jupyter = "^1.0.0"
+mypy = "^1.11.1"
+tqdm = "^4.66.5"
+isort = "^5.13.2"
+pytest = "^8.3.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

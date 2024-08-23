@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.optim.adamw import AdamW
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from hooks import register_all_forward_hooks, remove_all_forward_hooks
 from models import GPT
@@ -110,11 +110,11 @@ def experiment(
     vocab_size,
     calibration_loader,
     val_loader,
+    device: str,
     pruning_strategies: list[list[tuple[str, float]]] = [
         [("width_head", 0.1), ("width_neuron", 0.1), ("width_embedding", 0.1)]
     ],
     learning_rate: float = 2e-3,
-    device: str = "mps",
     model_path: str = "model",
 ):
 
@@ -135,6 +135,7 @@ def experiment(
 
     base_loss = estimate_loss(base_model, val_loader)["val"].item()
 
+    print(f"Base loss after the initial training: {base_loss:.4f}")
     for run in range(len(pruning_strategies)):
         print("-" * 50)
         strategy = pruning_strategies[run]
@@ -147,6 +148,7 @@ def experiment(
         model, num_params = get_model_with_importances(
             device, model_path, calibration_loader, batch_size, block_size
         )
+
         print(f"{'Number of trainable parameters before pruning:':60}", num_params)
         # prune
         for f, r in zip(pruning_funcs, ratios):
@@ -154,9 +156,11 @@ def experiment(
         #
         pruned_num_params = get_num_params(model)
         param_diff_ratio = (num_params - pruned_num_params) / num_params
+        
         print(
             f"{'Number of training parameters after pruning:':60} {pruned_num_params}"
         )
+
         print(
             f"{'Ratio of the pruned weights to the base model:':60} {param_diff_ratio*100:.2f}%"
         )
@@ -164,6 +168,7 @@ def experiment(
         print(f"{'Pruned evaluation loss (before calibration):':60} {pruned_eval:.4f}")
         #
         print("Starting the calibration")
+
         optimizer = AdamW(model.parameters(), lr=learning_rate)
         losses = kd_train_loop(
             model=model,
@@ -278,6 +283,7 @@ def kd_train_loop(
     training_losses = []
 
     loss_t = torch.tensor([0])
+    loss_s = torch.tensor([0])
     teacher_model.eval()
     bar = tqdm(range(max_iters))
     for iter in bar:
@@ -291,11 +297,11 @@ def kd_train_loop(
             for name in names:
                 desc += f"{name} loss {losses[name]:.4f}, "
             bar.set_description(
-                    f"step {iter}: {desc} \t teacher loss: {loss_t.item()} | baseline (uniform random): {baseline_score:.4f}"
+                    f"step {iter}: {desc} \t teacher loss: {loss_t.item():.4f} \t student loss: {loss_s.item():.4f} | baseline (uniform random): {baseline_score:.4f}"
             )
         # evaluate the loss
 
-        logits, loss = model(xb, yb)
+        logits, loss_s = model(xb, yb)
         teacher_logits, _ = teacher_model(xb, yb)
 
         loss_t =  torch.nn.functional.kl_div(
@@ -305,7 +311,7 @@ def kd_train_loop(
         )
 
 
-        loss = loss + loss_t
+        loss = loss_s + loss_t
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
