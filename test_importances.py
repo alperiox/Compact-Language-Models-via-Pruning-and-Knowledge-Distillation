@@ -3,8 +3,8 @@ from models import GPT, Block
 import torch
 
 
-@pytest.fixture
-def example_model() -> GPT:
+@pytest.fixture 
+def hyperparameters() -> dict[str, str|float|int]:
     block_size = 16  # maximum context length for the preds
     device = (
         "mps"
@@ -15,21 +15,51 @@ def example_model() -> GPT:
     n_head = 2
     n_blocks = 2
     dropout = 0.2
-    vocab_size = 64
 
-    model = GPT(vocab_size, block_size, n_embd, n_head, n_blocks, device, dropout)
-    model.to(device)
+    return {
+            "block_size": 16,
+            "device": device,
+            "n_embd": n_embd,
+            "n_head": n_head,
+            "n_blocks": n_blocks,
+            "dropout": dropout,
+        }
+
+@pytest.fixture
+def example_model(hyperparameters) -> GPT:
+    hyperparameters['vocab_size'] = 64
+    model = GPT(**hyperparameters)
+    model.to(hyperparameters['device'])
 
     return model
 
 @pytest.fixture 
-def example_batch() -> torch.Tensor:
-    raise NotImplementedError("Not implemented yet!")
+def example_dataset() -> torch.Tensor | Tokenizer:
+    from tokenizers import Tokenizer
+
     data = open("dataset/calibration.txt", "r").read()
     chars = sorted(list(set(data)))
     vocab_size = len(chars)
-    
-    return 
+
+    tokenizer = Tokenizer(chars)
+
+    tokenized_data = torch.tensor(tokenizer.encode(data), dtype=torch.long)
+
+    return tokenized_data, tokenizer
+
+
+
+@pytest.fixture 
+def hooked_model(hyperparameters) -> GPT:
+    from hooks import register_all_forward_hooks 
+
+    data = open("dataset/calibration.txt", "r").read()
+    chars = sorted(list(set(data)))
+    vocab_size = len(chars)
+    hyperparameters['vocab_size'] = vocab_size 
+    model = GPT(**hyperparameters)
+
+    return model
 
 
 
