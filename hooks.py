@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from importances import attn_head_importance, neuron_importance, embedding_importance
+
 # set up the initial hooks for all the corresponding layers
 from models import GPT, Block
 
@@ -62,21 +64,9 @@ def register_all_forward_hooks(model: GPT):
             module.register_forward_hook(block_importance_hook)
 
 
-def attn_head_importance_hook(
-    module, ins, outs
-) -> None:  # TODO: does the importance calculation returns the correct values for each head?
-    """calculates the multi-head-attention layer's importance per head"""
-    # outs.shape = (B, T, E) where B: batch_size, T: num tokens, E: embedding size
-    # the importance is calculated as summing the L2 norm of the attn outputs on B and T dimensions
-    outs_flat = outs.view(-1, outs.shape[-1])  # (b,t,e) -> (b*t, e)
-    importance = torch.linalg.vector_norm(outs_flat.detach().cpu(), ord=2, dim=-1).sum()
+def attn_head_importance_hook(module, ins, outs) -> None:
+    module.calculated_importance = attn_head_importance(module, outs)
 
-    module.calculated_importance = importance
-
-    # print(outs_flat.shape)
-    # print("module:", module.__class__.__name__, end=" ")
-    # print("importance:", importance)
-    # print(f"{module.__class__.__name__} importance: {importance.shape}")
 
 def neuron_importance_hook(module, ins, outs) -> None:
     """calculates the neuron importance for the given layer"""
