@@ -22,7 +22,7 @@ The goal of this project is to investigate whether pruning an existing LLM and t
 ## Getting Started
 
 1. Clone the repository
-2. Install the required dependencies (list them here or include a `requirements.txt` file)
+2. Install the required dependencies (from `pyproject.toml` file)
 3. Download the training data (Shakespeare dataset) by running the script
 4. Adjust hyperparameters in `script.py` as needed
 5. Run `script.py` to train the base model and perform pruning experiments
