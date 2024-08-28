@@ -3,14 +3,32 @@ import torch.nn as nn
 from models import Block
 
 
-def prune_neurons(model, ratio=0.2) -> None:
+def prune_neurons(model, n: list[int] | float = 0.2) -> None:
     # goal: trim the MLP layer weights
     # 1 - argsort the importances of the `ffwd` layers defined in the model
     # 2 - remove the weights with respect to the given ratio
+    
+    if isinstance(n, list):
+        c = 0
+    else:
+        c = None
+
     for module in model.modules():
         if isinstance(module, Block):
             importances = module.ffwd.net[0].calculated_importance
-            num_neurons = int((1 - ratio) * importances.size(0))
+            importance_size = importances.size(0)
+            if isinstance(n, int):
+                assert n<importance_size, "`n` can't be higher than the calculated number of activation importances!"
+                num_neurons = n
+            elif isinstance(n, float):
+                num_neurons = int((1 - n)) * importance_size
+            elif isinstance(n, list):
+                assert len(n) == model.n_blocks, "`n` should be same with the number of blocks!"
+                num = n[c] # type: ignore
+                assert num<importance_size, "`n` can't be higher than the calculated number of activation importances!"
+                num_neurons = num # type: ignore
+                c += 1 # type:ignore
+
             idx = importances.argsort(descending=True)[:num_neurons]
             # reinitialize the weights along with the layer
             dense1 = module.ffwd.net[0]
