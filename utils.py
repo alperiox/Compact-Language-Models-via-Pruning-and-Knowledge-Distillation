@@ -111,7 +111,7 @@ def experiment(
     calibration_loader,
     val_loader,
     device: str,
-    pruning_strategies: list[list[tuple[str, float]]] = [
+    pruning_strategies: list[list[tuple[str, float|list|int]]] = [
         [("width_head", 0.1), ("width_neuron", 0.1), ("width_embedding", 0.1)]
     ],
     learning_rate: float = 2e-3,
@@ -140,18 +140,18 @@ def experiment(
         print("-" * 50)
         strategy = pruning_strategies[run]
 
-        pruning_funcs = [strategies[s] for s, ratio in strategy]
-        pruning_func_names = [s for s, ratio in strategy]
-        ratios = [ratio for s, ratio in strategy]
+        pruning_funcs = [strategies[s] for s, _ in strategy]
+        pruning_func_names = [s for s, _ in strategy]
+        constraints = [constr for _, constr in strategy]
 
-        print(f"RUN {run+1} | RATIO: {ratios} | STRATEGIES: {pruning_func_names}")
+        print(f"RUN {run+1} | RATIO: {constraints} | STRATEGIES: {pruning_func_names}")
         model, num_params = get_model_with_importances(
             device, model_path, calibration_loader, batch_size, block_size
         )
 
         print(f"{'Number of trainable parameters before pruning:':60}", num_params)
         # prune
-        for f, r in zip(pruning_funcs, ratios):
+        for f, r in zip(pruning_funcs, constraints):
             f(model, r)
         #
         pruned_num_params = get_num_params(model)
@@ -191,7 +191,7 @@ def experiment(
             "run": run + 1,
             "base_num_params": num_params,
             "pruned_num_params": pruned_num_params,
-            "pruning_ratio": ratios,
+            "pruning_constraints": constraints,
             "param_diff_ratio": param_diff_ratio,
             "before_calibration_loss": pruned_eval,
             "after_calibration_loss": calibrated_eval,
