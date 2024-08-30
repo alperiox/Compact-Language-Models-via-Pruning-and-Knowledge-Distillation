@@ -1,33 +1,26 @@
 import torch.nn as nn
 
 from models import Block
+from utils import pruning_n_handler
 
 
 def prune_neurons(model, n: list[int] | float = 0.2) -> None:
     # goal: trim the MLP layer weights
     # 1 - argsort the importances of the `ffwd` layers defined in the model
     # 2 - remove the weights with respect to the given ratio
-    
-    if isinstance(n, list):
-        c = 0
-    else:
-        c = None
+
+    constraints = None
+    c = 0
 
     for module in model.modules():
         if isinstance(module, Block):
             importances = module.ffwd.net[0].calculated_importance
-            importance_size = importances.size(0)
-            if isinstance(n, int):
-                assert n<importance_size, "`n` can't be higher than the calculated number of activation importances!"
-                num_neurons = n
-            elif isinstance(n, float):
-                num_neurons = int((1 - n)) * importance_size
-            elif isinstance(n, list):
-                assert len(n) == model.n_blocks, "`n` should be same with the number of blocks!"
-                num = n[c] # type: ignore
-                assert num<importance_size, "`n` can't be higher than the calculated number of activation importances!"
-                num_neurons = num # type: ignore
-                c += 1 # type:ignore
+
+            if constraints is None:
+                constraints = pruning_n_handler(n, importances.size(0), model.n_blocks)
+
+            num_neurons = constraints[c]  # type: ignore
+            c += 1
 
             idx = importances.argsort(descending=True)[:num_neurons]
             # reinitialize the weights along with the layer
@@ -54,8 +47,12 @@ def prune_neurons(model, n: list[int] | float = 0.2) -> None:
     return model
 
 
-def prune_heads(model, ratio=0.2) -> None:
-    # goal: trim the attention heads' layer weights using the same approach as the `prune_neurons`
+def prune_heads(model, n: list[int] | float) -> None:
+    # goal: trim the attention heads' layer weights using the same approach as the `prune_neurons
+
+    constraints = None
+    c = 0
+
     for module in model.modules():
         if isinstance(module, Block):
             # now the multi-head attention
@@ -67,7 +64,12 @@ def prune_heads(model, ratio=0.2) -> None:
                 value_importances = head.value.calculated_importance
                 query_importances = head.query.calculated_importance
 
-                num_neurons = int((1 - ratio) * key_importances.size(0))
+                if constraints is None:
+                    constraints = pruning_n_handler(
+                        n, key_importances.size(0), model.n_blocks
+                    )
+
+                num_neurons = constraints[c]  # type: ignore
 
                 k_idx = key_importances.argsort(descending=True)[:num_neurons]
                 v_idx = value_importances.argsort(descending=True)[:num_neurons]
@@ -99,12 +101,11 @@ def prune_heads(model, ratio=0.2) -> None:
 
                 # TODO: only the weights in the embedding layers are prunned (1st strategy)
                 # TODO: need to follow the correct implementation from the paper (pruning every linear layer?)
-
             proj = module.sa.proj
             proj_importances = module.sa.proj.calculated_importance
-            num_neurons = (
-                int((1 - ratio) * key_importances.size(0)) * module.sa.num_heads
-            )
+
+            num_neurons = constraints[c] * model.n_head  # type: ignore
+
             idx = proj_importances.argsort(descending=True)[:num_neurons]
 
             module.sa.proj = nn.Linear(num_neurons, proj.out_features).to(model.device)
@@ -113,6 +114,11 @@ def prune_heads(model, ratio=0.2) -> None:
             module.sa.proj.bias.data = proj.bias.data
 
             module.sa.proj.calculated_importance = proj_importances[idx]
+
+            c += 1
+            
+            print("constraints: ", constraints)
+            print(f"c: {c}") 
 
 
 def prune_embeddings(model, ratio=0.2) -> None:
@@ -135,8 +141,6 @@ def prune_embeddings(model, ratio=0.2) -> None:
             module.ffwd.net[2] = nn.Linear(dense2.in_features, num_dense_embd).to(
                 model.device
             )  # weights.shape = (dense2.out_features = emb)
-
-
 
             module.ffwd.net[0].weight.data = dense1.weight.data[:, idx]
             module.ffwd.net[0].bias.data = dense1.bias.data

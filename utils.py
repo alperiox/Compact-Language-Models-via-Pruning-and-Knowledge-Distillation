@@ -38,6 +38,19 @@ def get_num_params(model):
 
     return t
 
+def pruning_n_handler(n, size, iters: int=1):
+    if isinstance(n, int):
+        assert n<size, "`n` can't be higher than the calculated number of activation importances!"
+        return [n] * iters
+    
+    elif isinstance(n, float) and 0<n<1: # if n is a ratio 
+        num = int( (1-n) * size)
+        return [num] * iters
+
+    elif isinstance(n, list):
+        assert len(n) == iters, "the number of layers being pruned should be same with `iters`!"
+        return n
+        
 
 def get_config_combinations(start: float = 0.1, end: float = 0.5, step: float = 0.15):
     # Define the range and step
@@ -154,6 +167,8 @@ def experiment(
         for f, r in zip(pruning_funcs, constraints):
             f(model, r)
         #
+        print(model)
+        print("-"*50)
         pruned_num_params = get_num_params(model)
         param_diff_ratio = (num_params - pruned_num_params) / num_params
         
@@ -286,18 +301,18 @@ def kd_train_loop(
     loss_s = torch.tensor([0])
     teacher_model.eval()
     bar = tqdm(range(max_iters))
-    for iter in bar:
+    for i in bar:
         # sample a batch of data
         xb, yb = train_loader.get_batch()
 
-        if iter % eval_interval == 0:
+        if i  % eval_interval == 0:
             losses = estimate_loss(model, batch_loaders, eval_iters)
             names = [loader.name for loader in batch_loaders]
             desc = ""
             for name in names:
                 desc += f"{name} loss {losses[name]:.4f}, "
             bar.set_description(
-                    f"step {iter}: {desc} \t teacher loss: {loss_t.item():.4f} \t student loss: {loss_s.item():.4f} | baseline (uniform random): {baseline_score:.4f}"
+                    f"step {i}: {desc} \t teacher loss: {loss_t.item():.4f} \t student loss: {loss_s.item():.4f} | baseline (uniform random): {baseline_score:.4f}"
             )
         # evaluate the loss
 
