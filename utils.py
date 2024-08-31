@@ -1,17 +1,20 @@
-import itertools
 import json
 import os
 import pickle
 from pathlib import Path
 
-import numpy as np
+from copy import deepcopy
 import pandas as pd
 import torch
 from torch.optim.adamw import AdamW
 from tqdm.auto import tqdm
 
+from hyperopt import fmin, tpe
+
 from hooks import register_all_forward_hooks, remove_all_forward_hooks
 from models import GPT
+
+from pruners import AVAILABLE_PRUNING_STRATEGIES
 
 
 class BatchLoader:
@@ -38,69 +41,6 @@ def get_num_params(model):
 
     return t
 
-def pruning_n_handler(n, size, iters: int=1):
-    if isinstance(n, int):
-        assert n<size, "`n` can't be higher than the calculated number of activation importances!"
-        return [n] * iters
-    
-    elif isinstance(n, float) and 0<n<1: # if n is a ratio 
-        num = int( (1-n) * size)
-        return [num] * iters
-
-    elif isinstance(n, list):
-        assert len(n) == iters, "the number of layers being pruned should be same with `iters`!"
-        return n
-        
-
-def get_config_combinations(start: float = 0.1, end: float = 0.5, step: float = 0.15):
-    # Define the range and step
-    # Create the list of values for widths
-    values = np.arange(start, end + step, step)
-
-    # Initialize the experiment config list
-    experiment_config = []
-
-    for s in ["width_head", "width_neuron", "width_embedding"]:
-        config = [[(s, round(v, 2))] for v in values]
-        experiment_config.extend(config)
-
-    # Setup 1: Vary width_head and width_neuron
-    config1 = [
-        [("width_head", round(wh, 2)), ("width_neuron", round(wn, 2))]
-        for wh, wn in itertools.product(values, values)
-    ]
-    experiment_config.extend(config1)
-
-    # Setup 2: Vary width_head and width_embedding
-    config2 = [
-        [("width_head", round(wh, 2)), ("width_embedding", round(we, 2))]
-        for wh, we in itertools.product(values, values)
-    ]
-    experiment_config.extend(config2)
-
-    # Setup 3: Vary width_neuron and width_embedding
-    config3 = [
-        [("width_neuron", round(wn, 2)), ("width_embedding", round(we, 2))]
-        for wn, we in itertools.product(values, values)
-    ]
-    experiment_config.extend(config3)
-
-    # Setup 4: Vary all three - width_head, width_neuron, and width_embedding
-    config4 = [
-        [
-            ("width_head", round(wh, 2)),
-            ("width_neuron", round(wn, 2)),
-            ("width_embedding", round(we, 2)),
-        ]
-        for wh, wn, we in itertools.product(values, values, values)
-    ]
-    experiment_config.extend(config4)
-
-    # Show an example of what the experiment_config looks like
-    print(f"Total configurations: {len(experiment_config)}")
-
-    return experiment_config
-
 
 def get_model_with_importances(
     device, model_path, calibration_loader, batch_size, block_size
@@ -117,6 +57,51 @@ def get_model_with_importances(
     return model, num_params
 
 
+def bayesian_optimization_objective(args):
+    (
+        param_ub,
+        param_lb,
+        configuration,
+        training_args,
+    ) = args  # (ub, lb, model, dict(config))
+
+    # copy the model
+    copy_model = deepcopy(training_args["teacher_model"])
+    # prune the model and calculate the number of parameters
+    for conf in configuration:
+        f = AVAILABLE_PRUNING_STRATEGIES[conf[0]]
+        f(copy_model, conf[1])
+
+    num_params = get_num_params(copy_model)
+    training_args["model"] = copy_model
+
+    if param_lb < num_params < param_ub:
+        losses = kd_train_loop(**training_args, verbose=False)
+        
+        return sum([10**k for k in losses])/len(losses)
+    else:
+        return float("inf")
+
+
+def architecture_search(space, num_evals=100):
+
+    best = fmin(
+        bayesian_optimization_objective,
+        space,
+        algo=tpe.suggest,
+        max_evals=num_evals,
+        trials_save_file="./trials.hyperopt",
+        
+    )
+
+    with open("trials.hyperopt", "rb") as f:
+        data = pickle.load(f)
+
+    pd.DataFrame(data.trials).to_csv("trials_summary.csv", index=False)
+
+    return best
+
+
 def experiment(
     batch_size,
     block_size,
@@ -124,22 +109,14 @@ def experiment(
     calibration_loader,
     val_loader,
     device: str,
-    pruning_strategies: list[list[tuple[str, float|list|int]]] = [
+    pruning_strategies: list[list[tuple[str, float | list[int] | int]]] = [
         [("width_head", 0.1), ("width_neuron", 0.1), ("width_embedding", 0.1)]
     ],
     learning_rate: float = 2e-3,
     model_path: str = "model",
 ):
 
-    from pruners import prune_embeddings, prune_heads, prune_neurons
-
     results = []
-
-    strategies = {
-        "width_head": prune_heads,
-        "width_neuron": prune_neurons,
-        "width_embedding": prune_embeddings,
-    }
 
     # initialize the base model and run a sample through
     base_model, num_params = get_model_with_importances(
@@ -153,7 +130,7 @@ def experiment(
         print("-" * 50)
         strategy = pruning_strategies[run]
 
-        pruning_funcs = [strategies[s] for s, _ in strategy]
+        pruning_funcs = [AVAILABLE_PRUNING_STRATEGIES[s] for s, _ in strategy]
         pruning_func_names = [s for s, _ in strategy]
         constraints = [constr for _, constr in strategy]
 
@@ -168,10 +145,10 @@ def experiment(
             f(model, r)
         #
         print(model)
-        print("-"*50)
+        print("-" * 100)
         pruned_num_params = get_num_params(model)
         param_diff_ratio = (num_params - pruned_num_params) / num_params
-        
+
         print(
             f"{'Number of training parameters after pruning:':60} {pruned_num_params}"
         )
@@ -291,40 +268,50 @@ def kd_train_loop(
     max_iters=1000,
     eval_interval=200,
     eval_iters=200,
+    verbose=True,
 ):
     # uniform baseline score
     baseline_score = -torch.log(torch.tensor(1 / vocab_size)).item()
-    print("UNIFORM BASELINE: ", baseline_score)
+    if verbose:
+        print("UNIFORM BASELINE: ", baseline_score)
+
     training_losses = []
 
     loss_t = torch.tensor([0])
     loss_s = torch.tensor([0])
     teacher_model.eval()
-    bar = tqdm(range(max_iters))
+
+    if verbose:
+        bar = tqdm(range(max_iters))
+    else:
+        bar = range(max_iters)
+    
     for i in bar:
         # sample a batch of data
         xb, yb = train_loader.get_batch()
 
-        if i  % eval_interval == 0:
+        if i % eval_interval == 0:
             losses = estimate_loss(model, batch_loaders, eval_iters)
             names = [loader.name for loader in batch_loaders]
-            desc = ""
-            for name in names:
-                desc += f"{name} loss {losses[name]:.4f}, "
-            bar.set_description(
+  
+            if verbose:
+                desc = ""
+                for name in names:
+                    desc += f"{name} loss {losses[name]:.4f}, "
+
+                bar.set_description(
                     f"step {i}: {desc} \t teacher loss: {loss_t.item():.4f} \t student loss: {loss_s.item():.4f} | baseline (uniform random): {baseline_score:.4f}"
-            )
+                    )
         # evaluate the loss
 
         logits, loss_s = model(xb, yb)
         teacher_logits, _ = teacher_model(xb, yb)
 
-        loss_t =  torch.nn.functional.kl_div(
+        loss_t = torch.nn.functional.kl_div(
             torch.nn.functional.log_softmax(logits, dim=-1),
             torch.nn.functional.softmax(teacher_logits, dim=-1),
             reduction="batchmean",
         )
-
 
         loss = loss_s + loss_t
 
