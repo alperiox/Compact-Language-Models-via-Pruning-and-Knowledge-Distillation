@@ -14,6 +14,7 @@ matplotlib = "^3.9.1.post1"
 scikit-learn = "^1.5.1"
 pytest = "^8.3.2"
 pandas = "^2.2.2"
+hyperopt = "^0.2.7"
 
 
 [tool.poetry.group.dev.dependencies]
