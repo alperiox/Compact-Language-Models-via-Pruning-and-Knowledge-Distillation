@@ -8,7 +8,7 @@ from torch.optim.adamw import AdamW
 
 from models import GPT
 from tokenizers import Tokenizer
-from utils import BatchLoader, architecture_search, get_model_with_importances, get_num_params, save, train_loop
+from utils import BatchLoader, architecture_search, get_model_with_importances, save, train_loop
 
 # hyperparameters
 num_trials = 500
@@ -90,6 +90,7 @@ idx = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(tokenizer.decode(model.generate(idx, max_new_tokens=500)[0].tolist()))
 
 model_params = {
+    "params": {
     "vocab_size": vocab_size,
     "block_size": block_size,
     "n_embd": n_embd,
@@ -97,6 +98,7 @@ model_params = {
     "n_blocks": n_blocks,
     "dropout": dropout,
     "device": device,
+    }
 }
 
 save(model, tokenizer, model_params, "model")
@@ -120,6 +122,7 @@ training_arguments = {
 upper_bound = int(num_params*.55)
 lower_bound = int(num_params*.45)
 
+ratios = [k*.1 for k in range(10)]
 
 search_space = hp.choice(
     "parameters",
@@ -128,9 +131,9 @@ search_space = hp.choice(
             upper_bound,
             lower_bound,
             [
-                ("width_head", hp.uniform("head_ratio", 0.1, 1)),
-                ("width_neuron", hp.uniform("neuron_ratio", 0.1, 1)),
-                ("width_embedding", hp.uniform("embedding_ratio", 0.1, 1)),
+                ("width_head", hp.choice("head_ratio", ratios)),
+                ("width_neuron", hp.choice("neuron_ratio", ratios)), 
+                ("width_embedding", hp.choice("embedding_ratio", ratios)),
                 ],
             training_arguments,
         )
@@ -138,4 +141,20 @@ search_space = hp.choice(
 )
 
 
-architecture_search(search_space, num_evals=num_trials)
+results_df, best_strategy = architecture_search(search_space, num_evals=num_trials)
+
+del best_strategy["parameters"]
+
+model_params["optimal_pruning_strategy"] = best_strategy
+
+print(results_df.head())
+
+idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+print(tokenizer.decode(model.generate(idx, max_new_tokens=500)[0].tolist()))
+
+
+
+
+
+
+
