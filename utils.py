@@ -9,7 +9,7 @@ import torch
 from torch.optim.adamw import AdamW
 from tqdm.auto import tqdm
 
-from hyperopt import fmin, tpe
+from hyperopt import fmin, tpe, Trials, STATUS_OK
 
 from hooks import register_all_forward_hooks, remove_all_forward_hooks
 from models import GPT
@@ -64,7 +64,6 @@ def bayesian_optimization_objective(args):
         configuration,
         training_args,
     ) = args  # (ub, lb, model, dict(config))
-
     # copy the model
     copy_model = deepcopy(training_args["teacher_model"])
     # prune the model and calculate the number of parameters
@@ -78,12 +77,14 @@ def bayesian_optimization_objective(args):
     if param_lb < num_params < param_ub:
         losses = kd_train_loop(**training_args, verbose=False)
         
-        return sum([10**k for k in losses])/len(losses)
+        return {"loss": sum([10**k for k in losses])/len(losses), "num_params": num_params, "status": STATUS_OK}
     else:
-        return float("inf")
+        return {"loss": float("inf"), "num_params": num_params, "status": STATUS_OK}
 
 
 def architecture_search(space, num_evals=100):
+    results = Trials()
+    results_list = []
 
     best = fmin(
         bayesian_optimization_objective,
@@ -91,15 +92,24 @@ def architecture_search(space, num_evals=100):
         algo=tpe.suggest,
         max_evals=num_evals,
         trials_save_file="./trials.hyperopt",
-        
+        trials=results
     )
 
-    with open("trials.hyperopt", "rb") as f:
-        data = pickle.load(f)
+    for trial in results.trials:
+        sample = trial.copy()
+        sample["vals"] = sample["misc"]["vals"]
+        sample["status"] = sample["result"]["status"]
+        sample["loss"] = sample["result"]["loss"]
+        sample["num_params"] = sample["result"]["num_params"]
+        misc_to_del = ["misc", "spec", "result", "exp_key", "owner", "version"]
+        for v in misc_to_del: del sample[v]
+        results_list.append(sample)
+    
+    results_df = pd.DataFrame(results_list)
+    results_df = results_df[results_df["loss"] != float("inf")].sort_values(by="loss").reset_index(drop=True)
+    results_df.to_csv("trial_results.csv", index=False)
 
-    pd.DataFrame(data.trials).to_csv("trials_summary.csv", index=False)
-
-    return best
+    return results_df, best
 
 
 def experiment(
@@ -224,17 +234,32 @@ def save(model, tokenizer, model_params, path: str | Path) -> None:
         json.dump(model_params, f)
 
 
-def load(model, save_dir: str | Path) -> tuple:
+def load(model, save_dir: str | Path, pruned: bool = False) -> tuple:
     save_dir = Path(save_dir)
+    tokenizer_path = save_dir / "tokenizer.pkl"
+    model_params_path = save_dir / "model_params.json"
+    model_path = save_dir / "model.pth"
+    
+    assert tokenizer_path.exists() and model_params_path.exists(), "`tokenizer.pkl` or `model_params.json` couldn't be found!"
 
-    with open(save_dir / "tokenizer.pkl", "rb") as f:
+    with open(tokenizer_path, "rb") as f:
         tokenizer = pickle.load(f)
 
-    with open(save_dir / "model_params.json", "r") as f:
+    with open(model_params_path, "r") as f:
         model_params = json.load(f)
 
-    model = model(**model_params)
-    model.load_state_dict(torch.load(save_dir / "model.pth", weights_only=True))
+    model = model(**model_params["params"])
+
+    if pruned:
+        assert model_params.get("optimal_pruning_strategy", False), "There must be `optimal_pruning_strategy` key in the `model_params`!"
+
+        pruning_strategy = model_params["optimal_pruning_strategy"]
+        for name, ratio in pruning_strategy.items():
+            f = AVAILABLE_PRUNING_STRATEGIES[name]
+            f(model, ratio)
+        model.load_state_dict(torch.load(save_dir / "model_pruned.pth", weights_only=True))
+    else:
+        model.load_state_dict(torch.load(model_path, weights_only=True))
 
     return model, tokenizer
 
