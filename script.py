@@ -88,6 +88,7 @@ idx = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(tokenizer.decode(model.generate(idx, max_new_tokens=500)[0].tolist()))
 
 model_params = {
+    "params": {
     "vocab_size": vocab_size,
     "block_size": block_size,
     "n_embd": n_embd,
@@ -95,6 +96,7 @@ model_params = {
     "n_blocks": n_blocks,
     "dropout": dropout,
     "device": device,
+    }
 }
 
 save(model, tokenizer, model_params, "model")

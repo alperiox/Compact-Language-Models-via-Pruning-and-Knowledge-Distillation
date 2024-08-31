@@ -228,7 +228,7 @@ def pruning_n_handler(n, size, iters: int = 1):
         ), "`n` can't be higher than the calculated number of activation importances!"
         return [n] * iters
 
-    elif isinstance(n, float) and 0 < n < 1:  # if n is a ratio
+    elif isinstance(n, float) and 0 <= n < 1:  # if n is a ratio
         num = int((1 - n) * size)
         return [num] * iters
 
