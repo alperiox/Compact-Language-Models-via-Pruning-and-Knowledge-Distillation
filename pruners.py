@@ -1,7 +1,6 @@
 import torch.nn as nn
 
 from models import Block
-from utils import pruning_n_handler
 
 
 def prune_neurons(model, n: list[int] | float = 0.2) -> None:
@@ -48,7 +47,7 @@ def prune_neurons(model, n: list[int] | float = 0.2) -> None:
 
 
 def prune_heads(model, n: list[int] | float) -> None:
-    # goal: trim the attention heads' layer weights using the same approach as the `prune_neurons
+    # goal: trim the attention heads' layer weights using the same approach as the `prune_neurons`
 
     constraints = None
     c = 0
@@ -117,10 +116,7 @@ def prune_heads(model, n: list[int] | float) -> None:
 
             c += 1
             
-            print("constraints: ", constraints)
-            print(f"c: {c}") 
-
-
+            
 def prune_embeddings(model, ratio=0.2) -> None:
     # goal: trim the embedding dimension of the weight matrices in MLP, MHA, and LayerNorm layers.
 
@@ -203,7 +199,7 @@ def prune_embeddings(model, ratio=0.2) -> None:
 
     model.token_embedding_table = nn.Embedding(model.vocab_size, num_dense_embd).to(
         model.device
-    )
+        ) # type: ignore
     model.position_embedding_table = nn.Embedding(model.block_size, num_dense_embd).to(
         model.device
     )
@@ -223,3 +219,31 @@ def prune_embeddings(model, ratio=0.2) -> None:
         :, idx
     ]  # weight.shape = (vocab_size, embd)
     model.ln_head.bias.data = ln_head.bias.data
+
+
+def pruning_n_handler(n, size, iters: int = 1):
+    if isinstance(n, int):
+        assert (
+            n < size
+        ), "`n` can't be higher than the calculated number of activation importances!"
+        return [n] * iters
+
+    elif isinstance(n, float) and 0 < n < 1:  # if n is a ratio
+        num = int((1 - n) * size)
+        return [num] * iters
+
+    elif isinstance(n, list):
+        assert (
+            len(n) == iters
+        ), "the number of layers being pruned should be same with `iters`!"
+        return n
+
+
+
+AVAILABLE_PRUNING_STRATEGIES = {
+    "width_head": prune_heads,
+    "width_neuron": prune_neurons,
+    "width_embedding": prune_embeddings,
+}
+
+
