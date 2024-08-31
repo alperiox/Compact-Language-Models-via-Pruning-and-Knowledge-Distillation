@@ -1,13 +1,13 @@
+import os
+
 import matplotlib.pyplot as plt
+import requests
 import torch
 from torch.optim.adamw import AdamW
 
 from models import GPT
 from tokenizers import Tokenizer
 from utils import BatchLoader, experiment, save, train_loop
-
-import requests
-import os
 
 # hyperparameters
 batch_size = 16  # number of independent sequences that'll be processed in parallel
