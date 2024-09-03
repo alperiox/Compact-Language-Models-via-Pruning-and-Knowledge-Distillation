@@ -69,15 +69,19 @@ def bayesian_optimization_objective(args):
     # prune the model and calculate the number of parameters
     for conf in configuration:
         f = AVAILABLE_PRUNING_STRATEGIES[conf[0]]
-        f(copy_model, conf[1])
+        f(copy_model, conf[1]/100) # since the hyperparameter comes in between [0, 90], we need to scale it down
 
     num_params = get_num_params(copy_model)
     training_args["model"] = copy_model
 
     if param_lb < num_params < param_ub:
         losses = kd_train_loop(**training_args, verbose=False)
-        
-        return {"loss": sum([10**k for k in losses])/len(losses), "num_params": num_params, "status": STATUS_OK}
+
+        return {
+            "loss": sum([10**k for k in losses]) / len(losses),
+            "num_params": num_params,
+            "status": STATUS_OK,
+        }
     else:
         return {"loss": float("inf"), "num_params": num_params, "status": STATUS_OK}
 
@@ -92,7 +96,7 @@ def architecture_search(space, num_evals=100):
         algo=tpe.suggest,
         max_evals=num_evals,
         trials_save_file="./trials.hyperopt",
-        trials=results
+        trials=results,
     )
 
     for trial in results.trials:
@@ -102,11 +106,16 @@ def architecture_search(space, num_evals=100):
         sample["loss"] = sample["result"]["loss"]
         sample["num_params"] = sample["result"]["num_params"]
         misc_to_del = ["misc", "spec", "result", "exp_key", "owner", "version"]
-        for v in misc_to_del: del sample[v]
+        for v in misc_to_del:
+            del sample[v]
         results_list.append(sample)
-    
+
     results_df = pd.DataFrame(results_list)
-    results_df = results_df[results_df["loss"] != float("inf")].sort_values(by="loss").reset_index(drop=True)
+    results_df = (
+        results_df[results_df["loss"] != float("inf")]
+        .sort_values(by="loss")
+        .reset_index(drop=True)
+    )
     results_df.to_csv("trial_results.csv", index=False)
 
     return results_df, best
@@ -239,8 +248,10 @@ def load(model, save_dir: str | Path, pruned: bool = False) -> tuple:
     tokenizer_path = save_dir / "tokenizer.pkl"
     model_params_path = save_dir / "model_params.json"
     model_path = save_dir / "model.pth"
-    
-    assert tokenizer_path.exists() and model_params_path.exists(), "`tokenizer.pkl` or `model_params.json` couldn't be found!"
+
+    assert (
+        tokenizer_path.exists() and model_params_path.exists()
+    ), "`tokenizer.pkl` or `model_params.json` couldn't be found!"
 
     with open(tokenizer_path, "rb") as f:
         tokenizer = pickle.load(f)
@@ -251,13 +262,17 @@ def load(model, save_dir: str | Path, pruned: bool = False) -> tuple:
     model = model(**model_params["params"])
 
     if pruned:
-        assert model_params.get("optimal_pruning_strategy", False), "There must be `optimal_pruning_strategy` key in the `model_params`!"
+        assert model_params.get(
+            "optimal_pruning_strategy", False
+        ), "There must be `optimal_pruning_strategy` key in the `model_params`!"
 
         pruning_strategy = model_params["optimal_pruning_strategy"]
         for name, ratio in pruning_strategy.items():
             f = AVAILABLE_PRUNING_STRATEGIES[name]
             f(model, ratio)
-        model.load_state_dict(torch.load(save_dir / "model_pruned.pth", weights_only=True))
+        model.load_state_dict(
+            torch.load(save_dir / "model_pruned.pth", weights_only=True)
+        )
     else:
         model.load_state_dict(torch.load(model_path, weights_only=True))
 
@@ -310,7 +325,7 @@ def kd_train_loop(
         bar = tqdm(range(max_iters))
     else:
         bar = range(max_iters)
-    
+
     for i in bar:
         # sample a batch of data
         xb, yb = train_loader.get_batch()
@@ -318,7 +333,7 @@ def kd_train_loop(
         if i % eval_interval == 0:
             losses = estimate_loss(model, batch_loaders, eval_iters)
             names = [loader.name for loader in batch_loaders]
-  
+
             if verbose:
                 desc = ""
                 for name in names:
@@ -326,7 +341,7 @@ def kd_train_loop(
 
                 bar.set_description(
                     f"step {i}: {desc} \t teacher loss: {loss_t.item():.4f} \t student loss: {loss_s.item():.4f} | baseline (uniform random): {baseline_score:.4f}"
-                    )
+                )
         # evaluate the loss
 
         logits, loss_s = model(xb, yb)

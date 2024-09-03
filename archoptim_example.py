@@ -122,8 +122,11 @@ training_arguments = {
 upper_bound = int(num_params*.55)
 lower_bound = int(num_params*.45)
 
-ratios = [k*.1 for k in range(10)]
-
+# I had to pass the hyperparameters from the range [0,90] as the `choice` would just count the ratios 
+# as discrete categorical variables, but they have an order between them so we'd have to pass a 
+# probability distribution. So I just applied quantized uniform to sample from an uniform distribution
+# thus the optimization would be able to count the ordering in. 
+# of course, this means that we're scaling down the passed value in `bayesian_optimization_objective` func. 
 search_space = hp.choice(
     "parameters",
     [
@@ -131,9 +134,9 @@ search_space = hp.choice(
             upper_bound,
             lower_bound,
             [
-                ("width_head", hp.choice("head_ratio", ratios)),
-                ("width_neuron", hp.choice("neuron_ratio", ratios)), 
-                ("width_embedding", hp.choice("embedding_ratio", ratios)),
+                ("width_head", hp.quniform("head_ratio", 0, 90, 10)),
+                ("width_neuron", hp.quniform("width_ratio", 0, 90, 10)),
+                ("width_embedding", hp.quniform("embedding_ratio", 0, 90, 10)),
                 ],
             training_arguments,
         )
