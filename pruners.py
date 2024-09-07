@@ -119,6 +119,11 @@ def prune_heads(model, n: list[int] | float) -> None:
             
 def prune_embeddings(model, ratio=0.2) -> None:
     # goal: trim the embedding dimension of the weight matrices in MLP, MHA, and LayerNorm layers.
+    importances = model.blocks[0].ln1.calculated_importance
+    num_dense_embd = int((1 - ratio) * model.n_embd)
+    idx = importances.argsort(descending=True)[:num_dense_embd]
+
+
 
     for module in model.modules():
         if isinstance(module, Block):
@@ -127,9 +132,6 @@ def prune_embeddings(model, ratio=0.2) -> None:
 
             dense1 = module.ffwd.net[0]  # weights.shape = (emb, 4 * emb)
             dense2 = module.ffwd.net[2]  # weights.shape = (4 * emb, emb)
-
-            num_dense_embd = int((1 - ratio) * dense1.in_features)
-            idx = importances.argsort(descending=True)[:num_dense_embd]
 
             module.ffwd.net[0] = nn.Linear(num_dense_embd, dense1.out_features).to(
                 model.device
